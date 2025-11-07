@@ -1,4 +1,5 @@
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher
@@ -31,12 +32,19 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
     
-    if settings.WEBHOOK_URL:
-        webhook_url = f"{settings.WEBHOOK_URL.rstrip('/')}{settings.WEBHOOK_PATH}"
-        await bot.set_webhook(webhook_url, drop_pending_updates=True)
-        logger.info(f"Webhook set to: {webhook_url}")
+    webhook_url = settings.WEBHOOK_URL
+    if not webhook_url:
+        replit_domains = os.getenv("REPLIT_DOMAINS")
+        if replit_domains:
+            webhook_url = f"https://{replit_domains}"
+            logger.info(f"Auto-detected Replit domain: {webhook_url}")
+    
+    if webhook_url:
+        full_webhook_url = f"{webhook_url.rstrip('/')}{settings.WEBHOOK_PATH}"
+        await bot.set_webhook(full_webhook_url, drop_pending_updates=True)
+        logger.info(f"Webhook set to: {full_webhook_url}")
     else:
-        logger.warning("WEBHOOK_URL not set, webhook not configured")
+        logger.warning("WEBHOOK_URL not set and REPLIT_DOMAINS not available, webhook not configured")
     
     scheduler.start()
     logger.info("Scheduler started")

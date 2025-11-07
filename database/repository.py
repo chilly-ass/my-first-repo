@@ -83,7 +83,7 @@ class RegistrationRepository:
             and_(
                 EventRegistration.user_id == user_id,
                 EventRegistration.event_id == event_id,
-                EventRegistration.status == RegistrationStatus.CONFIRMED
+                EventRegistration.status == RegistrationStatus.CONFIRMED.value
             )
         ).first()
     
@@ -92,8 +92,8 @@ class RegistrationRepository:
         registration = EventRegistration(
             user_id=user_id,
             event_id=event_id,
-            registered_via=platform,
-            status=RegistrationStatus.CONFIRMED
+            registered_via=platform.value,
+            status=RegistrationStatus.CONFIRMED.value
         )
         db.add(registration)
         db.flush()
@@ -104,7 +104,7 @@ class RegistrationRepository:
         return db.query(EventRegistration).filter(
             and_(
                 EventRegistration.event_id == event_id,
-                EventRegistration.status == RegistrationStatus.CONFIRMED
+                EventRegistration.status == RegistrationStatus.CONFIRMED.value
             )
         ).all()
     
@@ -113,13 +113,13 @@ class RegistrationRepository:
         return db.query(EventRegistration).filter(
             and_(
                 EventRegistration.user_id == user_id,
-                EventRegistration.status == RegistrationStatus.CONFIRMED
+                EventRegistration.status == RegistrationStatus.CONFIRMED.value
             )
         ).join(Event).order_by(Event.date_time).all()
     
     @staticmethod
     def cancel(db: Session, registration: EventRegistration) -> EventRegistration:
-        registration.status = RegistrationStatus.CANCELLED
+        registration.status = RegistrationStatus.CANCELLED.value
         db.flush()
         return registration
 
@@ -130,7 +130,7 @@ class StateRepository:
         return db.query(UserState).filter(
             and_(
                 UserState.user_platform_id == user_platform_id,
-                UserState.platform == platform
+                UserState.platform == platform.value
             )
         ).first()
     
@@ -146,7 +146,7 @@ class StateRepository:
         else:
             user_state = UserState(
                 user_platform_id=user_platform_id,
-                platform=platform,
+                platform=platform.value,
                 current_state=state,
                 state_data=state_data
             )

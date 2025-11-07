@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, BigInteger
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, BigInteger
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
 import enum
@@ -50,8 +50,8 @@ class EventRegistration(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     event_id = Column(Integer, ForeignKey("events.id"), nullable=False)
-    registered_via = Column(Enum(Platform), nullable=False)
-    status = Column(Enum(RegistrationStatus), nullable=False, default=RegistrationStatus.CONFIRMED)
+    registered_via = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="confirmed")
     created_at = Column(DateTime, default=datetime.utcnow)
     
     user = relationship("User", back_populates="registrations")
@@ -63,7 +63,7 @@ class UserState(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_platform_id = Column(String, unique=True, nullable=False, index=True)
-    platform = Column(Enum(Platform), nullable=False)
+    platform = Column(String, nullable=False)
     current_state = Column(String, nullable=True)
     state_data = Column(String, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -13,7 +13,7 @@ class RegistrationService:
             logger.warning(f"User {user.id} already registered for event {event.id}")
             raise ValueError("Вы уже зарегистрированы на это событие")
         
-        confirmed_count = len([r for r in event.registrations if r.status == RegistrationStatus.CONFIRMED])
+        confirmed_count = len([r for r in event.registrations if r.status == RegistrationStatus.CONFIRMED.value])
         if confirmed_count >= event.max_participants:
             logger.warning(f"Event {event.id} is full")
             raise ValueError("К сожалению, все места заняты")
