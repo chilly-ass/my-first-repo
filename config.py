@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     WEBHOOK_URL: Optional[str] = None
     WEBHOOK_PATH: str = "/telegram"
     
-    DATABASE_URL: str
+    DATABASE_URL: str = ""
     
     HOST: str = "0.0.0.0"
     PORT: int = 5000
