@@ -1,0 +1,294 @@
+## Архитектура вашего проекта - полная сводка
+
+### **Общая концепция:**
+Монолитное приложение на одном сервере с публичным IP, обслуживающее Telegram и WhatsApp ботов через webhook для регистрации на мероприятия с системой оповещений.
+
+---
+
+## **1. Технологический стек**
+
+### **Backend:**
+- **FastAPI** — веб-сервер для webhook endpoints
+- **Python 3.10+** — основной язык
+
+### **Боты:**
+- **aiogram 3.x** — Telegram bot (webhook режим)
+- **PyWa** — WhatsApp bot (webhook режим)
+
+### **Базы данных:**
+- **PostgreSQL** — основное хранилище (пользователи, события, регистрации)
+- **Redis** — FSM состояния + кэширование
+
+### **Фоновые задачи:**
+- **APScheduler** — периодические задачи (проверка событий, отправка уведомлений)
+
+### **Дополнительно:**
+- **Pydantic** — валидация данных, настройки, схемы
+- **SQLAlchemy** — ORM для PostgreSQL
+- **Loguru** — логирование
+- **Sentry** — мониторинг ошибок в реальном времени
+- **Tenacity** — retry логика
+
+### **Деплой:**
+- **Docker + docker-compose** — контейнеризация
+- **nginx** — reverse proxy (опционально)
+- **SSL/HTTPS** — обязательно (Let's Encrypt)
+
+***
+
+## **2. Архитектура системы**
+
+```
+Сервер (VPS, публичный IP, HTTPS)
+│
+├── /telegram webhook → aiogram handlers
+├── /whatsapp webhook → PyWa handlers
+│
+└── FastAPI (единый процесс, один event loop)
+     │
+     ├── PostgreSQL — основные данные
+     ├── Redis — FSM состояния + кэш
+     └── APScheduler — фоновые задачи
+```
+
+***
+
+## **3. Режимы работы**
+
+**Telegram:** Webhook (не polling)  
+**WhatsApp:** Webhook (только этот режим доступен)
+
+**Оба мессенджера:**
+- Работают через один FastAPI сервер
+- Разные endpoints: `/telegram` и `/whatsapp`
+- Общая бизнес-логика
+- Общая база данных
+
+***
+
+## **4. Структура базы данных**
+
+### **Таблица USERS (широкая таблица):**
+```
+- id (PK)
+- name
+- email (unique)
+- telegram_id (nullable)
+- whatsapp_phone (nullable)
+- created_at
+- updated_at
+```
+
+**Концепция:** Один человек = один user_id, независимо от платформы
+
+### **Таблица EVENTS:**
+```
+- id (PK)
+- title
+- description
+- date_time
+- location
+- max_participants
+```
+
+### **Таблица EVENT_REGISTRATIONS:**
+```
+- id (PK)
+- user_id (FK → users)
+- event_id (FK → events)
+- registered_via (telegram | whatsapp)
+- status (confirmed | cancelled)
+- created_at
+```
+
+### **Таблица USER_STATES (Redis или PostgreSQL):**
+```
+- user_id (FK)
+- platform (telegram | whatsapp)
+- current_state
+- state_data (JSON)
+- updated_at
+```
+
+***
+
+## **5. FSM (State Machine) для регистрации**
+
+### **Состояния:**
+```
+START
+  ↓
+CHOOSING_EVENT (выбор мероприятия)
+  ↓
+ENTERING_NAME (ввод имени)
+  ↓
+ENTERING_EMAIL (ввод email)
+  ↓
+CONFIRMING (подтверждение)
+  ↓
+REGISTERED (завершено)
+```
+
+### **Хранение состояний:**
+- **Redis** (основное) — быстро, надёжно
+- **PostgreSQL** (fallback) — если Redis упал
+
+### **Общий FSM Manager:**
+- Единая логика для Telegram и WhatsApp
+- Состояния хранятся с префиксом платформы: `fsm:telegram:123` или `fsm:whatsapp:+79123456789`
+
+***
+
+## **6. Файловая структура проекта**
+
+### **Конфигурация:**
+- `.env` — переменные окружения
+- `config.py` — загрузка настроек через Pydantic
+
+### **Точка входа:**
+- `main.py` — запуск FastAPI, регистрация webhooks
+
+### **Telegram:**
+- `telegram/handlers.py` — обработчики команд и сообщений
+- `telegram/states.py` — FSM состояния
+- `telegram/keyboards.py` — клавиатуры
+
+### **WhatsApp:**
+- `whatsapp/handlers.py` — обработчики сообщений
+- `whatsapp/keyboards.py` — кнопки
+
+### **Общая логика (services):**
+- `services/user_service.py` — работа с пользователями
+- `services/event_service.py` — работа с событиями
+- `services/registration_service.py` — логика регистрации
+- `services/notification_service.py` — отправка уведомлений
+- `services/fsm_service.py` — общий FSM manager
+
+### **База данных:**
+- `database/models.py` — SQLAlchemy модели
+- `database/connection.py` — подключения к PostgreSQL и Redis
+- `database/repository.py` — queries, inserts, updates
+
+### **Фоновые задачи:**
+- `scheduler/tasks.py` — периодические задачи
+- `scheduler/scheduler.py` — настройка APScheduler
+
+### **Утилиты:**
+- `utils/validators.py` — валидация email, телефонов
+- `utils/formatters.py` — форматирование сообщений
+
+### **Деплой:**
+- `Dockerfile` — образ приложения
+- `docker-compose.yml` — orchestration
+- `requirements.txt` — зависимости
+
+**Итого: ~20 файлов с кодом**
+
+***
+
+## **7. Система оповещений**
+
+### **APScheduler задачи:**
+- **Каждый час:** проверка событий через 24 часа → отправка напоминаний
+- **Каждый час:** проверка событий через 1 час → финальные напоминания
+
+### **Процесс:**
+```
+Scheduler → SELECT события из PostgreSQL →
+Получить зарегистрированных users →
+Отправить уведомления (Telegram/WhatsApp) →
+Залогировать отправку
+```
+
+***
+
+## **8. Обработка ошибок и восстановление**
+
+### **Трёхуровневая защита:**
+
+**Уровень 1: Docker (restart: unless-stopped)**
+- Процесс упал → автоматический перезапуск контейнера
+
+**Уровень 2: Try-except во всех handlers**
+- Ошибки не роняют процесс
+- Логирование через Loguru
+- Graceful fallback (Redis упал → PostgreSQL)
+
+**Уровень 3: Мониторинг**
+- **Sentry** — алерты о критических ошибках
+- **Health check endpoint** (`/health`) — проверка состояния
+- **Telegram алерты** — уведомления админу
+
+### **Retry механизмы:**
+- **HTTP запросы:** 3 попытки с exponential backoff (Tenacity)
+- **БД операции:** автоматический retry через SQLAlchemy
+- **Rate limiting:** защита от перегрузки
+
+### **Graceful degradation:**
+- Redis упал → FSM переключается на PostgreSQL
+- PostgreSQL упал → сообщение пользователю + критический алерт
+- API недоступен → retry → сохранение задачи в БД
+
+***
+
+## **9. Связка аккаунтов**
+
+**Сценарий:**
+1. Пользователь пишет из WhatsApp
+2. Система спрашивает email
+3. Находит существующего пользователя по email (если был в Telegram)
+4. Добавляет `whatsapp_phone` к записи
+5. Теперь один user_id для обеих платформ
+
+**Результат:**
+- Регистрации видны из любого мессенджера
+- Общая история взаимодействий
+
+***
+
+## **10. Требования к серверу**
+
+**Минимум:**
+- **VPS** с публичным IP
+- **2GB RAM** (рекомендуется)
+- **HTTPS + SSL** сертификат (обязательно)
+- **Домен** — для webhook endpoints
+
+**Открытые порты:**
+- `443` (HTTPS) — для webhooks
+- `80` (HTTP) — редирект на HTTPS
+
+***
+
+## **Итоговая схема:**
+
+```
+┌──────────────────────────────────────┐
+│   Docker (restart: unless-stopped)   │
+│  ┌────────────────────────────────┐  │
+│  │      FastAPI + APScheduler     │  │
+│  │                                │  │
+│  │  ┌──────────┐  ┌────────────┐ │  │
+│  │  │ Telegram │  │  WhatsApp  │ │  │
+│  │  │ handlers │  │  handlers  │ │  │
+│  │  └─────┬────┘  └──────┬─────┘ │  │
+│  │        │              │        │  │
+│  │        └──────┬───────┘        │  │
+│  │               │                │  │
+│  │      ┌────────▼────────┐       │  │
+│  │      │  Общая логика   │       │  │
+│  │      │  (services)     │       │  │
+│  │      └────────┬────────┘       │  │
+│  │               │                │  │
+│  └───────────────┼────────────────┘  │
+└──────────────────┼───────────────────┘
+                   │
+         ┌─────────┼─────────┐
+         │         │         │
+         ▼         ▼         ▼
+    PostgreSQL   Redis   Loguru/Sentry
+```
+
+**Вся архитектура готова к реализации!** 🚀
+
+Что скажешь мне кажется здесь где-то ошибки
